@@ -1,0 +1,22 @@
+
+
+<launch>
+
+
+<include
+file = "$(find dd2419_launch)/launch/base.launch">
+<arg name= "ch" value="83"/>
+</include>
+
+<node name="odom2map" pkg="tf2_ros" type="static_transform_publisher" args="0 0 0 0 0 0 map cf1/odom" />
+<!-- <node name="marker2offset2" pkg="tf2_ros" type="static_transform_publisher" args="0 0.5 0 -1.5708 0 -15708 aruco/detected2 aruco/detected2/offset" /> -->
+<!-- <node name="marker2offset3" pkg="tf2_ros" type="static_transform_publisher" args="0 0.5 0 -1.5708 0 -15708 aruco/detected3 aruco/detected3/offset" /> -->
+
+<node pkg="projectdrone" type="updateOdomTF.py" name="update_odom_tf"/>
+<node pkg="projectdrone" type="arucoMarkerDetector" name="markerdetector" />
+
+
+
+
+
+</launch>

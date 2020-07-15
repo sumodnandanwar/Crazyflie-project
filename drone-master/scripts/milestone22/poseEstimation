@@ -1,0 +1,137 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+from os.path import expanduser
+
+import numpy as np
+import roslib
+import sys
+import rospy
+import cv2
+import numpy as np
+from std_msgs.msg import String
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
+from geometry_msgs.msg import PoseStamped, TransformStamped
+import tf2_ros
+import tf2_geometry_msgs
+
+
+class image_converter:
+
+    def __init__(self):
+        self.image_pub = rospy.Publisher("/myresult", Image, queue_size=2)
+
+        self.bridge = CvBridge()
+        self.image_sub = rospy.Subscriber(
+            "/cf1/camera/image_raw", Image, self.callback)
+
+    def callback(self, data):
+        # Convert the image from OpenCV to ROS format
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+        except CvBridgeError as e:
+            print(e)
+
+        # Convert BGR to HSV
+        hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
+
+        # define range of the color we look for in the HSV space
+        bottomRedLower = np.array([int(1/2-1), int(0.3*255), int(0.3*255)])
+        bottomRedUpper = np.array([int(20/2-1), int(0.9*255), int(0.9*255)])
+        topRedLower = np.array([int(340/2-1), int(0.3*255), int(0.3*255)])
+        topRedUpper = np.array([int(360/2-1), int(0.9*255), int(0.9*255)])
+
+        whiteLower = np.array([0, 0, 90])  # white pixel
+        whiteUpper = np.array([255, 15, 120])  # white and grey pixels
+
+        # Threshold the HSV image to get only the pixels in ranage
+        bottomRedMask = cv2.inRange(hsv, bottomRedLower, bottomRedUpper)
+        topRedMask = cv2.inRange(hsv, topRedLower, topRedUpper)
+        whiteMask = cv2.inRange(hsv, whiteLower, whiteUpper)
+
+        # Create final mask
+        redMask = cv2.bitwise_or(bottomRedMask, topRedMask)
+        stopSignMask = cv2.bitwise_or(redMask, whiteMask)
+
+        # Bitwise-AND mask and original image
+        res = cv2.bitwise_and(cv_image, cv_image, mask=stopSignMask)
+
+        # Camera parameters and size of stop sign
+        trueRadius = 0.1
+        f = 231
+
+        # TF transform
+        object_camera = PoseStamped()
+        object_camera.header.frame_id = 'cf1/camera_link'
+        object_camera.header.stamp = rospy.Time.now()
+
+        # Check if sign exist and draw circle around it
+        if np.count_nonzero(redMask) > 600 and np.count_nonzero(whiteMask) > 500:
+            # Find center of stop sign
+            signPixels = np.where(redMask == np.amax(redMask))
+            x = int(np.median(signPixels[0]))
+            y = int(np.median(signPixels[1]))
+
+            # Draw circle onto image where sign is
+            radius = x - signPixels[0][0]
+            cv2.circle(res, (y, x), radius, 255, 10)
+
+            # Estimate position of stop sign
+            Z = (f*trueRadius)/radius
+            X = (y*Z)/f
+            Y = (x*Z)/f
+            # rospy.loginfo('Z = ')
+            # rospy.loginfo(Z)
+            rospy.loginfo('X = ')
+            rospy.loginfo(X)
+            # rospy.loginfo('Y = ')
+            # rospy.loginfo(Y)
+            object_camera.pose.position.x = X
+            object_camera.pose.position.y = Y
+            object_camera.pose.position.z = Z
+
+            if not tf_buf.can_transform(object_camera.header.frame_id, 'map', rospy.Time(0)):
+                rospy.logwarn_throttle(
+                    5.0, 'No transform from %s to map' % object_camera.header.frame_id)
+                return
+
+            objectMap = tf_buf.transform(
+                object_camera, 'map', rospy.Duration(0.5))
+
+            trans = TransformStamped()
+            trans.header.frame_id = 'map'
+            trans.child_frame_id = 'stopsign'
+            trans.header.stamp = rospy.Time.now()
+            trans.transform.translation = objectMap.pose.position
+            trans.transform.rotation.w = 1
+            broadcaster.sendTransform(trans)
+
+        # Publish the image
+        try:
+            self.image_pub.publish(self.bridge.cv2_to_imgmsg(res, "bgr8"))
+        except CvBridgeError as e:
+            print(e)
+
+
+rospy.init_node('environmentdetector', anonymous=True)
+tf_buf = tf2_ros.Buffer()
+tf_lstn = tf2_ros.TransformListener(tf_buf)
+broadcaster = tf2_ros.TransformBroadcaster()
+
+
+def main(args):
+
+    ic = image_converter()
+
+    print("running...")
+    try:
+        rospy.spin()
+    except KeyboardInterrupt:
+        print("Shutting down")
+
+    cv2.destroyAllWindows()
+
+
+if __name__ == '__main__':
+    main(sys.argv)

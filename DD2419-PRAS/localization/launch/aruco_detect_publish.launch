@@ -1,0 +1,28 @@
+<launch>
+
+  <!-- Launch necessary background processes -->
+  <!-- <include file="$(find svea)/launch/filtering_project_background.launch" /> -->
+
+  <!-- Define input arguments -->
+  <arg name="camera_frame" default="cf1/camera_link"/>
+  <arg name="aruco_topic" default="/aruco/markers"/>  
+  <arg name="base_frame" default="cf1/base_link"/>
+  <arg name="aruco_pos_topic" default="aruco_odom_pose_tf"/>
+  <arg name="odom_frame" default="cf1/odom"/>
+  <arg name="output" default="screen"/>
+  <arg name="lin_cov_aruco" default="0.001"/>
+  <arg name="ang_cov_aruco" default="0.001"/>
+
+  <node type="aruco_detect_publish.py" pkg="localization" name="aruco_detect_publish" output="$(arg output)" respawn="true">
+    <!-- show hidden files to find map file -->
+    <param name="camera_frame" value="$(arg camera_frame)" />
+    <param name="aruco_topic" value="$(arg aruco_topic)" />
+    <param name="base_frame" value="$(arg base_frame)" />
+    <param name="aruco_pos_topic" value="$(arg aruco_pos_topic)" />
+    <param name="odom_frame" value="$(arg odom_frame)" />
+    <param name="lin_cov_aruco" type="double" value="$(arg lin_cov_aruco)" />
+    <param name="ang_cov_aruco" type="double" value="$(arg ang_cov_aruco)" />
+    
+  </node>
+
+</launch>

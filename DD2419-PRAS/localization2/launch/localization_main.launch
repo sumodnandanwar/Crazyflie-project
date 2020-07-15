@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<!--
+    Default localization launch file
+-->
+
+<launch>
+    
+    <!-- Include Other Launch Files -->
+    <include file="$(find dd2419_simulation)/launch/simulation.launch"/>
+        <!-- <arg name = "gui" value = "true" /> -->
+        
+    <include file="$(find dd2419_simulation)/launch/aruco.launch"/>
+        <!-- <arg name = "gui" value = "false" /> -->
+
+    <!-- Static Transforms -->
+    <node pkg="tf2_ros" type="static_transform_publisher" args="0.01 0 0.02 -1.54 0 -1.54 cf1/base_link cf1/camera_link" name="cf_camera_trans" />
+    <node pkg="tf2_ros" type="static_transform_publisher" args="0.00 0 0.00 0.00 0.00 0.00 map cf1/odom" name="cf_odom_trans" />
+
+    <!-- Display aruco markers /home/akanshu/dd2419_ws/src/course_packages/dd2419_resources/worlds_json -->
+    <node pkg="part2" type="displaymapmarkers" args="$(find dd2419_resources)/worlds_json/milestone3.world.json"  name="displaymapmarkers">
+    </node>
+
+    <!-- Display aruco markers -->
+    <node pkg="map_server" type="map_server" args="/home/sumslinux/dd2419_ws/src/DD2419-PRAS/localization2/2Dmap.yaml"  name="map_server">
+    </node>
+
+    <!-- Pull goal message -->
+    <node pkg="localization" type="Readfinalgoal.py" name="Readfinalgoal">
+    </node>
+    -->
+    <!-- Start localization node -->
+
+    <node pkg="localization2" type="localization_main.py" name="localization">
+    </node> 
+
+</launch>

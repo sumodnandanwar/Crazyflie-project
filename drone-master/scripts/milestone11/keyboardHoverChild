@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+import rospy
+from std_msgs.msg import String, Empty
+from std_msgs.msg import Int8
+from crazyflie_driver.msg import Hover
+import readchar
+
+
+def keys():
+
+    rate = rospy.Rate(10)
+    cmd = Hover()
+    cmd.zDistance = 0.2
+    while not rospy.is_shutdown():
+
+        cmd.vx = 0
+        cmd.vy = 0
+        cmd.header.stamp = rospy.Time.now()
+
+        k = readchar.readkey()
+        k = k.lower()
+
+        if k == 'w':
+            cmd.vx = 0.5
+        elif k == 's':
+            cmd.vx = -0.5
+        elif k == 'd':
+            cmd.vy = -0.5
+        elif k == 'a':
+            cmd.vy = 0.5
+        elif k == 'q':
+            cmd.yawrate = -40
+        elif k == 'e':
+            cmd.yawrate = 40
+        elif k == ',':
+            cmd.zDistance -= 0.05
+        elif k == '.':
+            cmd.zDistance += 0.05
+        elif k == 'c':
+            pub_stop.publish(Empty())
+            break
+
+        rospy.loginfo(cmd)
+        pub_cmd.publish(cmd)
+        rate.sleep()
+
+
+pub_stop = rospy.Publisher('stop', Empty, queue_size=1)
+pub_cmd = rospy.Publisher('keyboardControl', Hover, queue_size=2)
+rospy.init_node('Keyboard_control', anonymous=True)
+
+if __name__ == '__main__':
+
+    try:
+        keys()
+    except rospy.ROSInterruptException:
+        pass

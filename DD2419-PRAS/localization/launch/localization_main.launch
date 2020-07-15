@@ -1,0 +1,49 @@
+<?xml version="1.0"?>
+<!--
+    Default localization launch file
+-->
+
+<launch>
+    
+    <!-- Include Other Launch Files -->
+    <!-- <include file="$(find dd2419_simulation)/launch/simulation.launch"/> -->
+        <!-- <arg name = "gui" value = "true" /> -->
+     
+    <!-- <include file="$(find dd2419_simulation)/launch/aruco.launch"/> -->
+        <!-- <arg name = "gui" value = "false" /> -->
+
+    <include file="$(find localization)/launch/aruco_detect_publish.launch"/> 
+        <arg name = "gui" value = "false" />
+
+    <!-- Static Transforms -->
+    <!-- <node pkg="tf2_ros" type="static_transform_publisher" args="0.01 0 0.02 -1.54 0 -1.54 cf1/base_link cf1/camera_link" name="cf_camera_trans" /> -->
+    <!-- <node pkg="tf2_ros" type="static_transform_publisher" args="-0.00 0.00 0.00 0.00 0.00 0.00 map cf1/odom" name="cf_odom_trans" /> --> -->
+    <node pkg="tf2_ros" type="static_transform_publisher" args="0.5 -0.5 0.00 1.57 0.00 0.00 map image" name="cf_map_image" />   
+    <!-- <node pkg="localization" type="Odomtomap" name="Odomtomap"> -->
+    <!-- </node> -->
+
+    <!-- Display aruco markers /home/sumslinux/dd2419_ws/src/course_packages/dd2419_resources/worlds_json -->
+    <node pkg="part2" type="displaymapmarkers" args="/home/sumslinux/dd2419_ws/src/course_packages/dd2419_resources/worlds_json/milestone3.world.json"  name="displaymapmarkers">
+    </node>
+
+    <node pkg="localization" type="pose_filtered.py" name="Pose_filtered">
+    </node>
+
+    <!-- <node pkg="localization" type="displaymapobjects.py" name="displaymapobjects">
+    </node> -->
+
+    <!-- Display aruco markers -->
+    <!-- <node pkg="map_server" type="map_server" args="/home/sumslinux/dd2419_ws/src/DD2419-PRAS/localization/2Dmap.yaml"  name="map_server">
+    </node> -->
+
+    <!-- Pull pose message -->
+    <!-- <node pkg="localization" type="Readfinalgoal.py" name="Readfinalgoal">
+    </node> -->
+    
+    <!-- Start localization node -->
+    <node pkg="localization" type="localize_final1.py" args="/home/sumslinux/dd2419_ws/src/course_packages/dd2419_resources/worlds_json/milestone3.world.json" name="localize_vanilla" output="screen">
+    </node>
+    <node pkg="localization" type="path_planning_image.py"  name="Pathplanning" output="screen">
+    </node>
+
+</launch>

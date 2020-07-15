@@ -1,0 +1,121 @@
+#!/usr/bin/env python
+
+from os.path import expanduser
+import rospy
+from aruco_msgs.msg import MarkerArray, Marker
+import tf2_ros
+import tf2_geometry_msgs
+from geometry_msgs.msg import PoseWithCovariance, PoseStamped, TransformStamped
+from crazyflie_driver.msg import Position
+import math
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from std_msgs.msg import Empty
+
+currentPose = None
+latestCmd = None
+
+
+def updatePose(pose):
+    global currentPose
+    currentPose = pose.pose
+
+
+def distance(marker):
+    global currentPose
+    # prevent data race
+    cf1Position = currentPose.position
+    xDiff = marker.pose.position.x - cf1Position.x
+    yDiff = marker.pose.position.y - cf1Position.y
+    zDiff = marker.pose.position.z - cf1Position.z
+    return math.sqrt(xDiff**2 + yDiff**2 + zDiff**2)
+
+
+def buildCmd(marker_odom):
+    global latestCmd, currentPose
+    cmd = Position()
+
+    cmd.header.stamp = rospy.Time.now()
+    cmd.header.frame_id = "cf1/odom"
+
+    cmd.x = marker_odom.pose.position.x
+    cmd.y = marker_odom.pose.position.y
+    cmd.z = marker_odom.pose.position.z
+
+    _, _, yaw = euler_from_quaternion((marker_odom.pose.orientation.x,
+                                       marker_odom.pose.orientation.y,
+                                       marker_odom.pose.orientation.z,
+                                       marker_odom.pose.orientation.w))
+
+    cmd.yaw = math.degrees(yaw)
+    # rospy.loginfo("Updated cmd pose")
+
+    latestCmd = cmd
+
+
+def moveDrone(arucoFrame):
+    global currentPose, latestCmd
+    marker = PoseStamped()
+    marker.header.frame_id = arucoFrame
+    marker.pose.position.y = 0.5
+
+    roll, pitch, yaw = euler_from_quaternion((0, 0, 0, 1))
+
+    roll -= math.pi/2
+    yaw -= math.pi/2
+
+    marker.pose.orientation.x, marker.pose.orientation.y, marker.pose.orientation.z, marker.pose.orientation.w = quaternion_from_euler(
+        roll, pitch, yaw)
+
+    offset_odom = tf_buf.transform(marker, "cf1/odom", rospy.Duration(0.1))
+
+    buildCmd(offset_odom)
+
+    tol = 0.3
+    rospy.loginfo(distance(offset_odom))
+    if distance(offset_odom) < tol:
+        rospy.loginfo("made it to marker")
+        marker.pose.position.y = 0
+        pub_odomMap.publish(marker)
+
+
+# Setup node, subscribers and tf2 buffers
+rospy.init_node('followarucomarker')
+sub_currentPose = rospy.Subscriber('/cf1/pose', PoseStamped, updatePose)
+pub_cmd = rospy.Publisher('/cf1/cmd_position', Position, queue_size=2)
+
+pub_odomMap = rospy.Publisher('update_ready_odom_map', PoseStamped, queue_size=1)
+
+
+tf_buf = tf2_ros.Buffer()
+tf_lstn = tf2_ros.TransformListener(tf_buf)
+
+
+def main():
+    global latestCmd, currentPose
+    rate = rospy.Rate(10)
+
+    while currentPose == None:  # Wait for 1st cf1/pose to be received
+        continue
+
+    baseCmd = Position()
+
+    baseCmd.header.stamp = rospy.Time.now()
+    baseCmd.header.frame_id = "cf1/odom"
+    baseCmd.x = currentPose.position.x
+    baseCmd.y = currentPose.position.y
+    baseCmd.z = 0.5
+
+    latestCmd = baseCmd
+
+    while not rospy.is_shutdown():
+        for id in ["1", "2", "3", "4", "5", "6"]:
+            arucoFrame = "aruco/detected" + id
+            if tf_buf.can_transform(arucoFrame, "cf1/odom", rospy.Time(0)):
+                rospy.loginfo("hudsahdusahd")
+                moveDrone(arucoFrame)
+        rate.sleep()
+        # pub_cmd.publish(latestCmd)
+
+
+if __name__ == '__main__':
+    main()

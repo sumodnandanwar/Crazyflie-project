@@ -1,0 +1,13 @@
+<launch>
+
+
+<include
+file = "$(find dd2419_launch)/launch/base.launch">
+<arg name= "ch" value="82"/>
+</include>
+
+<node name="odom2map" pkg="tf2_ros" type="static_transform_publisher" args="0 0 0 0 0 0 map cf1/odom" />
+
+<!-- <node pkg="tf2_ros" type="static_transform_publisher" name="cf_camera_trans" args="0 0 0.02 -1.54 0 -1.54 cf1/base_link cf1/camera_link" /> -->
+
+</launch>

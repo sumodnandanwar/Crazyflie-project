@@ -1,0 +1,159 @@
+#!/usr/bin/env python2
+
+import sys
+import numpy as np
+import rospy
+import json
+from math import sqrt, atan2, cos, sin
+from std_msgs.msg import String
+from geometry_msgs.msg import PoseStamped
+
+position = None
+goal = None
+checkpoints  = None
+obstacles = None
+
+#define fly zone
+xlb = -10
+xub = 10
+ylb = -10
+yub = 10
+
+class RRTnode:
+    def __init__(self, twoDpos, parent = None, children = []):
+        self.twoDpos = twoDpos
+        self.parent = parent
+        self.children = children
+
+def positionCallback(pose):
+    global position
+    position = pose
+
+def rrtCallback(recieved_goal):
+    print('Planning')
+    global goal
+    goal = recieved_goal.data.split(',') 
+    goal[0] = float(goal[0])
+    goal[1] = float(goal[1])
+  
+
+    startNode = RRTnode([position.pose.position.x, position.pose.position.y])
+    goalNode = RRTnode(goal)
+    step = 0.5
+    
+    
+    nodes = [startNode]
+    newNode = startNode
+    while newNode.twoDpos != goalNode.twoDpos:
+        # Get random 2D position in fly zone
+        randompos = [np.random.randint(xlb, xub), np.random.randint(ylb, yub)]
+        # Get nearest neighbouring node
+        idx = nearest_node(randompos, nodes) 
+        neighbour = nodes[idx]
+        
+        
+        # If possible, move straight to goal
+        if distance(newNode, goalNode) < 0.5:
+             newNode.children.append(goalNode)
+             goalNode.parent = newNode
+             newNode = goalNode
+
+        else:# Calc position of new node
+            x = randompos[0] - neighbour.twoDpos[0]
+            y = randompos[1] - neighbour.twoDpos[1]
+            angle = atan2(x,y)
+            newX = step*cos(angle) + neighbour.twoDpos[0]
+            newY = step*sin(angle) + neighbour.twoDpos[1]
+            # If new node is safe, create
+            if trajectory_is_safe(neighbour.twoDpos, [newX, newY]):
+                #print('Is safe')
+                #print(not_too_close([newX, newY], nodes))
+                if not_too_close([newX, newY], nodes):
+                    #print('Is far')
+                    newNode = RRTnode([newX, newY], neighbour)
+                    neighbour.children.append(newNode)
+                    nodes.append(newNode)
+                    print(newNode.twoDpos)
+    
+    
+    # Get a list of checkpoints
+
+    node = goalNode
+    global checkpoints
+    checkpoints = []
+    print(goalNode.parent)
+    while node.parent != None:
+        checkpoints.append(node.twoDpos)
+        node = node.parent
+        
+    global checkpoints
+    checkpoints.reverse()
+    print(checkpoints)
+
+
+def trajectory_is_safe(start, sub_goal):
+    # Check if trajectory betweem start and to is safe
+    for obstacle in obstacles:
+        if sub_goal[0] < obstacle[0] + 0.2 and sub_goal[0] > obstacle[0] - 0.2:
+            return False
+        if sub_goal[1] < obstacle[1] + 0.2 and sub_goal[1] > obstacle[1] - 0.2:
+            return False
+    #print('New checkpoint is safe')
+    return True
+
+
+def nearest_node(sub_goal, nodes):
+    dist = []
+
+    for node in nodes:
+        dist.append((node.twoDpos[0]-sub_goal[0])**2 + (node.twoDpos[1]-sub_goal[1])**2)
+    return dist.index(min(dist))
+
+def distance(current, sub_goal):
+    #print(current)
+    dist = sqrt((current.twoDpos[0] - (sub_goal.twoDpos[0]))**2 + (current.twoDpos[1] - (sub_goal.twoDpos[1]))**2)
+    return dist
+
+
+def not_too_close(node_try, nodes):
+    dist = []
+    for nod in nodes:
+        dist.append(sqrt((nod.twoDpos[0]-node_try[0])**2 + (nod.twoDpos[1]-node_try[1])**2))
+    if min(dist) > 0.2:
+        #print('Is not too close')
+        return True
+    else:
+        print('Too close')
+        return False
+
+def get_obstacles(obs):
+# Return the 2d position of the center of the gates
+    gate = obs['position']
+    return gate[0:2]
+
+
+rospy.init_node('pathplanning')
+rospy.Subscriber('/cf1/pose', PoseStamped, positionCallback)
+rospy.Subscriber('/next_goal', String, rrtCallback)
+p = rospy.Publisher('/setpoints', String, queue_size = 2)
+
+
+def main(argv=sys.argv):
+    args = rospy.myargv(argv=argv)
+    #Getting all gates from world 
+    with open(args[1], 'rb') as f:
+       world = json.load(f)
+    global obstacles
+    obstacles = [get_obstacles(obs) for obs in world['gates']]
+    print(obstacles)
+
+    rate = rospy.Rate(10)
+    while not rospy.is_shutdown():
+        if checkpoints != None:
+            p.publish(checkpoints)        
+        rate.sleep()
+
+if __name__ == '__main__':
+    main()
+
+

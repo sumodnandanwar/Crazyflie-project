@@ -1,0 +1,25 @@
+#!/usr/bin/env python2
+
+import sys
+import math
+import rospy
+from std_msgs.msg import String
+
+goal = None
+
+def main():
+    print('in')
+    rospy.Rate(20)
+    while not rospy.is_shutdown():
+        print('Input goal on form x,y')
+        goal = raw_input()
+        #goal = cmd.split(',')    
+        if goal != None:
+            p.publish(goal)
+    rospy.sleep()
+
+rospy.init_node('navigation')
+p = rospy.Publisher('/next_goal', String, queue_size = 2)
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,68 @@
+#!/usr/bin/env python
+import rospy
+from aruco_msgs.msg import MarkerArray, Marker
+import tf2_ros
+import tf2_geometry_msgs
+from geometry_msgs.msg import PoseWithCovariance, PoseStamped, TransformStamped
+from crazyflie_driver.msg import Position
+import math
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from std_srvs.srv import Empty, EmptyResponse
+
+
+def rotate_cmd(_):
+
+    # Init publisher
+    rospy.loginfo('Server called')
+    pub_cmd = rospy.Publisher('/cf1/cmd_position', Position, queue_size=2)
+
+    # Store position in front of marker
+    fixedPose = rospy.wait_for_message('cf1/pose', PoseStamped)
+    rotation = Position()
+    rotation.header.frame_id = 'cf1/odom'
+    rotation.header.stamp = rospy.Time.now()
+    rotation.x = fixedPose.pose.position.x
+    rotation.y = fixedPose.pose.position.y
+    rotation.z = fixedPose.pose.position.z + \
+        0.4  # ! Remove constant for actual use
+    _, _, yaw = euler_from_quaternion((fixedPose.pose.orientation.x,
+                                       fixedPose.pose.orientation.y,
+                                       fixedPose.pose.orientation.z,
+                                       fixedPose.pose.orientation.w))
+    rotation.yaw = math.degrees(yaw)
+
+    #! Take off (remove for actual use)
+    i = 0
+    while i < 50:
+        rospy.loginfo('Take off')
+        pub_cmd.publish(rotation)
+        rospy.sleep(0.1)
+        i += 1
+
+    rospy.sleep(0.2)
+    rate = rospy.Rate(20)
+    increaseAngle = 4
+    angle = 0
+
+    # 360 rotation comand
+    while True:
+        angle += 4
+        rospy.loginfo(angle)
+        rotation.yaw += increaseAngle
+        rotation.header.stamp = rospy.Time.now()
+        pub_cmd.publish(rotation)
+        rate.sleep()
+        if angle == 360:
+            return EmptyResponse()
+
+
+def checkpoint_server():
+    # Init node and server
+    rospy.init_node('clear_checkpoint_service')
+    rospy.loginfo('Service initialized')
+    s = rospy.Service('clear_checkpoint', Empty, rotate_cmd)
+    rospy.spin()
+
+
+if __name__ == "__main__":
+    checkpoint_server()

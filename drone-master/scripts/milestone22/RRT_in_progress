@@ -1,0 +1,112 @@
+#!/usr/bin/env python2
+
+import sys
+import numpy as np
+import math
+import rospy
+import json
+
+from standard_msgs.msg import List
+from geometry_msgs.msg import PoseStamped
+
+position = Ńone
+goal = None
+checkpoints  = None
+
+#define fly zone2dpos
+xlb = -10
+xub = 10
+ylb = -10
+yub = 10
+
+def positionCallback(pose):
+    global position
+    position = pose
+
+def rrtCallback(goal):
+    startNode = node([position.x, position.y])
+    goalNode = node([goal[0], goal[1]])
+    step = 0.5
+
+    nodes = [startNode]
+    newNode = startNode
+    while newNode.twoDpos != goalNode.twopos:
+        # Get random 2D position in fly zone
+        randompos = [np.randint(xlb, xlb), np.randint(ylb, yub)]
+        idx = nearest_node(randompos, nodes) 
+
+        neighbour = nodes[idx]
+        # If possible, move straight to goal
+        # if trajectory_is_safe(newNode.twoDpos, goalNode.twoDpos):
+        #     neighbour.children.append(goalNode)
+        #     goalNode.parent = neighbour
+        #     newNode = goalNode
+
+        # Calc position of new node
+        x = random[0] - neighbour.twoDpos[0]
+        y = random[1] - neighbour.twoDpos[1]
+        angle = arctan2(x,y)
+        newX = step*cos(angle)
+        newY = step*sin(angle)
+
+        # Otherwise
+        if trajectory_is_safe(neighbour.twoDpos, [newX, newY]):
+            newNode = node(newX, newY, neighbour)
+            neighbour.children.append(newNode)
+            nodes.append(newNode)
+    
+    
+    # Get a list of checkpoints
+    node = goalNode
+    setPoints = []
+    while node.parent != None:
+        setPoints = node.twoDpos
+        node = node.parent
+        
+    global checkpoints
+    checkpoints.reverse()
+    
+      
+def trajectory_is_safe(start, to):
+    return True
+    # Check if trajectory betweem start and to is safe
+
+def nearest_node(sub_goal, nodes):
+    dist = []
+    for nod in nodes_pos:   
+        dist.append((nodes.2dpos[0]-sub_goal[0])**2 + (nodes.2dpos[1]-sub_goal[1])**2)
+    return dist.index(min(dist))
+
+def distance(current, goal):
+    dist = sqrt((current[0] - goal[0])**2 + (current[1] - goal[1])**2)
+    return dist
+
+class node(self, twoDpos, parent = None, children = []):
+    self.2dpos = twoDpos
+    self.parent = parent
+    self.children = children
+
+
+rospy.ini_node('pathplanning')
+rospy.Subscriber('/cf1/pose', PoseStamped, positionCallback)
+rospy.Subscriber('next_goal', List, rrtCallback)
+p = rospy.Publisher('setpoints', List, queue_size = 2)
+
+
+def main():
+    #Could probably use something like this to read obstacles
+    #with open(args[1], 'rb') as f:
+    #   world = json.load(f)
+    
+    #obstacles = [get_obstacles(o) for o in world['gates']]
+
+
+    while not rospy.is_shutdown():
+        if checkpoints != None:
+            p.publish(checkpoints)        
+
+
+if '__name__' == '__main__':
+    main()
+
+

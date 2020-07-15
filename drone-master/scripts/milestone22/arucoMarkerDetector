@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+
+from os.path import expanduser
+import rospy
+from aruco_msgs.msg import MarkerArray, Marker
+import tf2_ros
+import tf2_geometry_msgs
+from geometry_msgs.msg import PoseWithCovariance, PoseStamped, TransformStamped
+
+
+def build_transform(marker):
+
+    # Create marker of type PoseStamped due to PoseWithCovariance not being
+    # supported by tf_buf. Uncomment following line to see supported types
+    # tf_buf.registration.print_me()
+    marker_camera = PoseStamped()
+    marker_camera.header = marker.header
+    marker_camera.header.frame_id = "cf1/camera_link"
+    marker_camera.pose = marker.pose.pose
+
+    # Transform marker from camera_link to base_link
+    # if not tf_buf.can_transform("cf1/camera_link", "cf1/odom", rospy.Duration(0, 0)):
+    if not tf_buf.can_transform("cf1/camera_link", "map", rospy.Time(0)):
+        # rospy.loginfo("transform not available")
+        return
+    rospy.loginfo("transform available")
+    marker_odom = tf_buf.transform(marker_camera, "map", rospy.Duration(0.1))
+
+    # Transform marker from cf1/odom to map and prepare as transform
+    marker_map_transform = TransformStamped()
+    marker_map_transform.header.frame_id = "map"
+    marker_map_transform.child_frame_id = "/aruco/detected" + str(marker.id)
+    marker_map_transform.header.stamp = rospy.Time.now()
+    marker_map_transform.transform.translation = marker_odom.pose.position
+    marker_map_transform.transform.rotation = marker_odom.pose.orientation
+    return marker_map_transform
+
+
+def markers_callback(msg):
+    # Create a transform for each marker
+    transforms = [build_transform(marker) for marker in msg.markers]
+
+    if not transforms == [None]:
+        # Broadcast these transforms
+        broadcaster = tf2_ros.TransformBroadcaster()
+        broadcaster.sendTransform(transforms)
+
+
+# Setup node, subscribers and tf2 buffers
+rospy.init_node('markerdetector')
+sub_marker = rospy.Subscriber('/aruco/markers', MarkerArray, markers_callback)
+tf_buf = tf2_ros.Buffer()
+tf_lstn = tf2_ros.TransformListener(tf_buf)
+
+
+def main():
+    rospy.spin()
+
+
+if __name__ == '__main__':
+    main()

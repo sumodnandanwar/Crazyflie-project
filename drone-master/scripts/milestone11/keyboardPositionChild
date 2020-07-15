@@ -1,0 +1,88 @@
+#!/usr/bin/env python
+import rospy
+from std_msgs.msg import String, Empty
+from std_msgs.msg import Int8
+from crazyflie_driver.msg import Hover
+from geometry_msgs.msg import PoseWithCovariance, PoseStamped, TransformStamped, Vector3
+from crazyflie_driver.msg import Position
+from tf.transformations import euler_from_quaternion
+import readchar
+import math
+
+currentPose = None
+
+def updatePose(pose):
+    global currentPose
+    currentPose = pose.pose
+
+
+def buildCmd():
+    global currentPose
+    while currentPose == None: # Wait for 1st goal to be received
+        continue
+    cmd = Position()
+
+    cmd.header.stamp = rospy.Time.now()
+    cmd.header.frame_id = "cf1/odom"
+
+    cmd.x = currentPose.position.x
+    cmd.y = currentPose.position.y
+    cmd.z = currentPose.position.z
+    cmd.z = 0.3
+
+    _, _, yaw = euler_from_quaternion((currentPose.orientation.x, currentPose.orientation.y, currentPose.orientation.z, currentPose.orientation.w))
+
+    cmd.yaw = math.degrees(yaw)
+
+    return cmd
+
+def keys():
+
+    rate = rospy.Rate(10)
+    cmd = buildCmd()    # Start pose
+    pub_cmd.publish(cmd)    # Publish first cmd
+
+    while not rospy.is_shutdown():
+
+        k = readchar.readkey()
+        k = k.lower()
+
+        if k == 'w':
+            cmd.x += 0.1
+        elif k == 's':
+            cmd.x -= 0.1
+
+        elif k == 'd':
+            cmd.y -= 0.1
+        elif k == 'a':
+            cmd.y += 0.1
+
+        elif k == 'q':
+            cmd.yaw -= 5
+        elif k == 'e':
+            cmd.yaw += 5
+
+        elif k == ',':
+            cmd.z -= 0.05
+        elif k == '.':
+            cmd.z += 0.05
+        elif k == 'c':
+            pub_stop.publish(Empty())
+            break
+
+        rospy.loginfo(cmd)
+        pub_cmd.publish(cmd)
+        rate.sleep()
+
+
+sub_currentPose = rospy.Subscriber('/cf1/pose', PoseStamped, updatePose)
+pub_stop = rospy.Publisher('stop', Empty, queue_size=1)
+pub_cmd = rospy.Publisher('keyboardControlPosition', Position, queue_size=2)
+
+rospy.init_node('Keyboard_control', anonymous=True)
+
+if __name__ == '__main__':
+    try:
+        keys()
+    except rospy.ROSInterruptException:
+        pass

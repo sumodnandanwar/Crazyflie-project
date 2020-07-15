@@ -1,0 +1,155 @@
+#!/usr/bin/env python
+
+from os.path import expanduser
+import rospy
+from aruco_msgs.msg import MarkerArray, Marker
+import tf2_ros
+import tf2_geometry_msgs
+from geometry_msgs.msg import PoseWithCovariance, PoseStamped, TransformStamped
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
+import math
+import json
+
+# list_transforms = []
+
+def build_transform(marker):
+    global marker_odom, marker_map_transform
+
+    marker_camera = PoseStamped()
+    marker_camera.header = marker.header
+    marker_camera.header.frame_id = "cf1/camera_link"
+    marker_camera.pose = marker.pose.pose
+
+    if not tf_buf.can_transform("cf1/odom","cf1/camera_link", rospy.Time(0)):
+        # rospy.loginfo("transform not available")
+        return
+    #Transfroms pose from camera into map
+    marker_odom = tf_buf.transform(marker_camera,"cf1/camera_link", rospy.Duration(0.1))
+    print marker_odom
+    # if not tf_buf.can_transform("map","cf1/odom", rospy.Time(0)):
+    #     return
+    # marker_odom = tf_buf.transform(marker_od,"map", rospy.Duration(0.1))
+
+    # Transform marker from  to map and prepare as transform
+    marker_map_transform = TransformStamped()
+    marker_map_transform.header.frame_id = "cf1/odom"
+    marker_map_transform.child_frame_id = "/aruco/detected" + str(marker.id)
+    marker_map_transform.header.stamp = rospy.Time.now()
+    marker_map_transform.transform.translation = marker_odom.pose.position
+    marker_map_transform.transform.rotation = marker_odom.pose.orientation
+    print marker_map_transform
+    return marker_map_transform
+    
+drift_marker = PoseStamped()
+
+def markers_callback(msg):
+    global transforms, drift_marker
+    # Create a transform for each marker
+    transforms = [build_transform(marker) for marker in msg.markers]
+    if not transforms == [None]:
+        # Broadcast these transforms
+        broadcaster.sendTransform(transforms)
+        drift_marker = PoseStamped()
+        drift_marker.header = marker_odom.header
+        drift_marker.pose.position = marker_odom.pose.position
+        drift_marker.pose.orientation = marker_odom.pose.orientation
+        # print drift_marker
+        pub_cmd.publish(drift_marker)
+
+        
+
+def drift_calc(jsonMarker):
+    global odomtrans
+    # The aruco and the driftmarker should be of the same id
+    xdel = jsonMarker[0]['pose']['position'][0]-drift_marker.pose.position.x
+    ydel = jsonMarker[0]['pose']['position'][1]-drift_marker.pose.position.y
+    zdel = jsonMarker[0]['pose']['position'][2]-drift_marker.pose.position.z
+
+    # roll = math.radians(jsonMarker[0]['pose']['orientation'][0])
+    # pitch = math.radians(jsonMarker[0]['pose']['orientation'][1])
+    # yaw = math.radians(jsonMarker[0]['pose']['orientation'][2])
+
+    # orientation_x,orientation_y,orientation_z,orientation_w = quaternion_from_euler(roll,pitch,yaw)
+
+    # xodel = orientation_x - drift_marker.pose.orientation.x
+    # yodel = orientation_y - drift_marker.pose.orientation.y
+    # zodel = orientation_z - drift_marker.pose.orientation.z
+    # wodel = orientation_w - drift_marker.pose.orientation.w
+
+    rotationn= (drift_marker.pose.orientation.x, drift_marker.pose.orientation.y, drift_marker.pose.orientation.z, drift_marker.pose.orientation.w)
+    orientation_x,orientation_y,orientation_z = euler_from_quaternion(rotationn)
+
+    jroll = math.radians(jsonMarker[2]['pose']['orientation'][0])
+    jpitch = math.radians(jsonMarker[2]['pose']['orientation'][1])
+    jyaw = math.radians(jsonMarker[2]['pose']['orientation'][2])
+
+    jroll = round(jroll,2)
+    jpitch = round(jroll,2)
+    jyaw = round(jroll,2)
+
+    roll = 0.0 #round(jroll,2) - round(orientation_x,2) 
+    pitch = 0.0 #round(jpitch,2) - round(orientation_y,2)   
+    yaw = 0.0 #round(jyaw,2) - round(orientation_z,2) 
+
+    xodel, yodel, zodel, wodel = quaternion_from_euler(roll,pitch,yaw)
+     
+    odomtrans = TransformStamped()
+    odomtrans.header.stamp = rospy.Time.now()
+    odomtrans.header.frame_id = 'map'
+    odomtrans.child_frame_id = 'cf1/odom'
+    odomtrans.transform.translation.x = abs(xdel)
+    odomtrans.transform.translation.y = abs(ydel)
+    odomtrans.transform.translation.z = abs(zdel)
+    odomtrans.transform.rotation.x = xodel
+    odomtrans.transform.rotation.y = yodel
+    odomtrans.transform.rotation.z = zodel
+    odomtrans.transform.rotation.w = wodel
+    # print odomtrans
+    # return odomtrans
+    
+
+# def normalized_tranform():
+#     ## idea list madhe trans bhar 
+#     ## tyalist chi size 10 chya as pas 
+#     ##
+    
+
+
+# def kalman_filter()
+#     ####
+#     ## 1 
+#     ## to_pub = new *0.9+ 0.1*old
+
+# Setup node, subscribers and tf2 buffers
+rospy.init_node('markerdetector')
+sub_marker = rospy.Subscriber('/aruco/markers', MarkerArray, markers_callback)
+pub_cmd  = rospy.Publisher('/drift_marker_pose', PoseStamped, queue_size=2)
+tf_buf = tf2_ros.Buffer()
+tf_lstn = tf2_ros.TransformListener(tf_buf)
+broadcaster = tf2_ros.TransformBroadcaster()
+
+def main():
+    global jsonMarker
+    rate = rospy.Rate(10)  # Hz
+    path = expanduser('~')
+    path += '/dd2419_ws/src/course_packages/dd2419_resources/worlds_json/milestone3.world.json'
+    with open(path, 'rb') as f:
+        world = json.load(f)
+
+    jsonMarker = [m for m in world['markers']]
+    
+    # Broadcast previous transform
+    while not drift_marker and not rospy.is_shutdown():
+        odomtrans.header.stamp = rospy.Time.now()
+        broadcaster.sendTransform(odomtrans)
+
+    #Broadcast new transform
+    while not rospy.is_shutdown():
+        drift_calc(jsonMarker)
+        broadcaster.sendTransform(odomtrans)
+        rate.sleep()
+    # rospy.spin()
+
+
+if __name__ == '__main__':
+    main()
